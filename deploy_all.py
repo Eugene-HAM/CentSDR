@@ -28,15 +28,15 @@ def write(path, text):
         f.write(text)
     print(f"  ✓ записан: {path}")
 
-def patch(path, old, new, description=""):
+def patch(path, old, , description=""):
     text = read(path)
     if old not in text:
         print(f"  ✗ [{path}] не найдено: {description or repr(old[:60])}")
         return False
-    if new in text:
+    if  in text:
         print(f"  ~ [{path}] уже применено: {description or repr(old[:60])}")
         return True
-    write(path, text.replace(old, new, 1))
+    write(path, text.replace(old, , 1))
     print(f"  ✓ [{path}] применён патч: {description}")
     return True
 
@@ -114,32 +114,17 @@ patch("nanosdr.h",
 # ─────────────────────────────────────────────
 print("\n[3/4] dsp.c — nfm_demod()")
 
-# 3a. Убрать fm_demod_stereo и всё стерео
-patch("dsp.c",
-    old="""void
-fm_demod_stereo(int16_t *src, int16_t *dst, size_t len)
-{""",
-    new="""#if 0 /* FM_STEREO removed — replaced by NFM */
-void
-fm_demod_stereo(int16_t *src, int16_t *dst, size_t len)
-{""",
-    description="закомментировать fm_demod_stereo"
-)
-
-# Закрыть #if 0 в конце dsp_init
+# 3a. Добавить nfm_demod() и убрать stereo_separate_init()
 patch("dsp.c",
     old="""void
 dsp_init(void)
 {
 \tstereo_separate_init();
 }""",
-    new="""#endif /* FM_STEREO removed */
-
-// NFM filter state (zero-initialized by BSS)
+    new="""// NFM filter state (zero-initialized by BSS)
 static q15_t bq_nfm_state[4 * 3];
 
 // Elliptic LPF 6th order, fc=5000 Hz @ fs=48000 Hz, stopband 60 dB
-// Coefficients in q1.14 format (ARM CMSIS biquad, postshift=1)
 static q15_t bq_coeffs_nfm[] = {
     2271,  0, -3132,  2271, 25663, -11568,
     9849,  0, -16121, 9849, 26986, -13909,
@@ -150,10 +135,6 @@ static arm_biquad_casd_df1_inst_q15 bq_nfm = {
     3, bq_nfm_state, bq_coeffs_nfm, 1
 };
 
-/*
- * NFM (Narrow FM) demodulator
- * Bandwidth: 10 kHz (±5 kHz). FM discriminator + 5 kHz LPF.
- */
 void
 nfm_demod(int16_t *src, int16_t *dst, size_t len)
 {
@@ -175,7 +156,6 @@ nfm_demod(int16_t *src, int16_t *dst, size_t len)
 
     disp_fetch_samples(B_IF1, BT_R_INTERLEAVE, dst, NULL, len);
 
-    // LPF 5 kHz — ограничение полосы NFM
     arm_biquad_cascade_df1_q15(&bq_nfm, dst, dst, len / 2);
 
     disp_fetch_samples(B_PLAYBACK, BT_R_INTERLEAVE, dst, NULL, len);
@@ -184,9 +164,8 @@ nfm_demod(int16_t *src, int16_t *dst, size_t len)
 void
 dsp_init(void)
 {
-    /* NFM state zero-initialized by BSS */
 }""",
-    description="dsp_init + добавить nfm_demod()"
+    description="добавить nfm_demod() + убрать stereo_separate_init()"
 )
 
 # ─────────────────────────────────────────────
