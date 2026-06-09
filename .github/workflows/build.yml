@@ -1,0 +1,43 @@
+name: Build Firmware
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+  workflow_dispatch:  # кнопка ручного запуска на GitHub
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Получить код с субмодулями (ChibiOS)
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # 2. Установить ARM cross-компилятор
+      - name: Install ARM toolchain
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y gcc-arm-none-eabi binutils-arm-none-eabi
+
+      # 3. Применить патчи из deploy_all.py
+      - name: Apply patches
+        run: python3 deploy_all.py
+
+      # 4. Собрать прошивку
+      - name: Build firmware
+        run: make
+
+      # 5. Опубликовать артефакт — .bin и .elf доступны для скачивания
+      - name: Upload firmware artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware
+          path: |
+            build/ch.bin
+            build/ch.elf
+          retention-days: 30
