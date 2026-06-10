@@ -37,7 +37,6 @@ def patch(path, old, new, description=""):
     return True
 
 def patch_re(path, pattern, new, description="", already_marker=None):
-    """Patch using regex. already_marker is a string to detect if already applied."""
     text = read(path)
     if already_marker and already_marker in text:
         print("  ALREADY [" + path + "] already applied: " + description)
@@ -55,28 +54,20 @@ def patch_re(path, pattern, new, description="", already_marker=None):
 # ─────────────────────────────────────────────
 print("\n[1/4] ili9341.c - rotate display 180 degrees")
 
+# 1a. MADCTL byte in init sequence
 patch("ili9341.c",
     old="0x36, 1, 0x28, // landscape",
     new="0x36, 1, 0xE8, // landscape 180 degrees (MY+MX+BGR)",
     description="MADCTL byte in init_seq"
 )
 
-# Use regex to handle any whitespace variation in ili9341_set_direction
-patch_re("ili9341.c",
-    pattern=r"void\s*\nili9341_set_direction\(int rot180\)\s*\{[^}]*\}",
-    new=(
-        "void\n"
-        "ili9341_set_direction(int rot180)\n"
-        "{\n"
-        "\tuint8_t value = 0xE8; // landscape 180 degrees (default)\n"
-        "\tif (!rot180) {\n"
-        "\t\tvalue = 0x28; // landscape normal\n"
-        "\t}\n"
-        "\tsend_command(0x36, 1, &value);\n"
-        "}"
-    ),
-    description="ili9341_set_direction()",
-    already_marker="landscape 180 degrees (default)"
+# 1b. Default value in ili9341_set_direction - just change the char value line
+#     Original: char value = 0x28; // landscape
+#     We change it to start rotated by default and invert the condition
+patch("ili9341.c",
+    old="\tchar value = 0x28; // landscape\n\tif (rot180) {\n\t\tvalue |= 0xc0; // reverse X and Y axis\n\t}",
+    new="\tchar value = 0xE8; // landscape 180 degrees (default)\n\tif (!rot180) {\n\t\tvalue = 0x28; // landscape normal\n\t}",
+    description="ili9341_set_direction() default rotation"
 )
 
 # ─────────────────────────────────────────────
@@ -191,10 +182,10 @@ patch_re("main.c",
         '};'
     ),
     description="mod_table[]",
-    already_marker='nfm_demod, 0,              48, "nfm"'
+    already_marker="nfm_demod"
 )
 
-# 4b. Default channels - regex handles any whitespace
+# 4b. Default channels
 patch_re("main.c",
     pattern=(
         r"\{ 26800200,\s+MOD_FM_STEREO \},\s*\n"
