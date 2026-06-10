@@ -103,57 +103,70 @@ patch_re("nanosdr.h",
 # ─────────────────────────────────────────────
 print("\n[3/4] dsp.c - add nfm_demod()")
 
-patch_re("dsp.c",
-    pattern=r"void\s*\ndsp_init\(void\)\s*\{\s*\nstereo_separate_init\(\);\s*\n\}",
-    new=(
-        "// NFM filter state (zero-initialized by BSS)\n"
-        "static q15_t bq_nfm_state[4 * 3];\n"
-        "\n"
-        "// Elliptic LPF 6th order, fc=5000 Hz @ fs=48000 Hz, stopband 60 dB\n"
-        "static q15_t bq_coeffs_nfm[] = {\n"
-        "    2271,  0, -3132,  2271, 25663, -11568,\n"
-        "    9849,  0, -16121, 9849, 26986, -13909,\n"
-        "   16384,  0, -26655,16384, 28887, -15349\n"
-        "};\n"
-        "\n"
-        "static arm_biquad_casd_df1_inst_q15 bq_nfm = {\n"
-        "    3, bq_nfm_state, bq_coeffs_nfm, 1\n"
-        "};\n"
-        "\n"
-        "void\n"
-        "nfm_demod(int16_t *src, int16_t *dst, size_t len)\n"
-        "{\n"
-        "    int32_t  *s   = __SIMD32(src);\n"
-        "    int32_t  *d32 = __SIMD32(dst);\n"
-        "    unsigned  i;\n"
-        "    uint32_t  x0  = fm_demod_state.last;\n"
-        "    q15_t     v;\n"
-        "\n"
-        "    disp_fetch_samples(B_CAPTURE, BT_C_INTERLEAVE, src, NULL, len);\n"
-        "\n"
-        "    for (i = 0; i < len; i += 2) {\n"
-        "        uint32_t x1 = *s++;\n"
-        "        v = atan_2iq(x0, x1);\n"
-        "        *d32++ = __PKHBT(v, v, 16);\n"
-        "        x0 = x1;\n"
-        "    }\n"
-        "    fm_demod_state.last = x0;\n"
-        "\n"
-        "    disp_fetch_samples(B_IF1, BT_R_INTERLEAVE, dst, NULL, len);\n"
-        "\n"
-        "    arm_biquad_cascade_df1_q15(&bq_nfm, dst, dst, len / 2);\n"
-        "\n"
-        "    disp_fetch_samples(B_PLAYBACK, BT_R_INTERLEAVE, dst, NULL, len);\n"
-        "}\n"
-        "\n"
-        "void\n"
-        "dsp_init(void)\n"
-        "{\n"
-        "}"
-    ),
-    description="add nfm_demod() and remove stereo_separate_init()",
-    already_marker="nfm_demod"
-)
+NFM_CODE = """
+// NFM filter state (zero-initialized by BSS)
+static q15_t bq_nfm_state[4 * 3];
+
+// Elliptic LPF 6th order, fc=5000 Hz @ fs=48000 Hz, stopband 60 dB
+static q15_t bq_coeffs_nfm[] = {
+    2271,  0, -3132,  2271, 25663, -11568,
+    9849,  0, -16121, 9849, 26986, -13909,
+   16384,  0, -26655,16384, 28887, -15349
+};
+
+static arm_biquad_casd_df1_inst_q15 bq_nfm = {
+    3, bq_nfm_state, bq_coeffs_nfm, 1
+};
+
+void
+nfm_demod(int16_t *src, int16_t *dst, size_t len)
+{
+    int32_t  *s   = __SIMD32(src);
+    int32_t  *d32 = __SIMD32(dst);
+    unsigned  i;
+    uint32_t  x0  = fm_demod_state.last;
+    q15_t     v;
+
+    disp_fetch_samples(B_CAPTURE, BT_C_INTERLEAVE, src, NULL, len);
+
+    for (i = 0; i < len; i += 2) {
+        uint32_t x1 = *s++;
+        v = atan_2iq(x0, x1);
+        *d32++ = __PKHBT(v, v, 16);
+        x0 = x1;
+    }
+    fm_demod_state.last = x0;
+
+    disp_fetch_samples(B_IF1, BT_R_INTERLEAVE, dst, NULL, len);
+
+    arm_biquad_cascade_df1_q15(&bq_nfm, dst, dst, len / 2);
+
+    disp_fetch_samples(B_PLAYBACK, BT_R_INTERLEAVE, dst, NULL, len);
+}
+
+void
+dsp_init(void)
+{
+}
+"""
+
+# Strategy: remove old dsp_init and append nfm_demod + new dsp_init at end of file
+text = read("dsp.c")
+if "nfm_demod" in text:
+    print("  ALREADY [dsp.c] already applied: nfm_demod")
+else:
+    # Remove old dsp_init (with or without stereo_separate_init)
+    text = re.sub(
+        r"\nvoid\s*\ndsp_init\(void\)\s*\{[^}]*\}",
+        "",
+        text,
+        count=1,
+        flags=re.DOTALL
+    )
+    # Append NFM code at end of file
+    text = text.rstrip() + "\n" + NFM_CODE
+    write("dsp.c", text)
+    print("  PATCHED [dsp.c]: add nfm_demod() and replace dsp_init()")
 
 # ─────────────────────────────────────────────
 # PATCH 4: main.c - mod_table, channels, commands
