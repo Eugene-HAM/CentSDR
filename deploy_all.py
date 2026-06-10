@@ -76,50 +76,52 @@ print("\n[3/4] dsp.c - add nfm_demod()")
 
 patch("dsp.c",
     old="void\ndsp_init(void)\n{\n\tstereo_separate_init();\n}",
-    new="""// NFM filter state (zero-initialized by BSS)
-static q15_t bq_nfm_state[4 * 3];
-
-// Elliptic LPF 6th order, fc=5000 Hz @ fs=48000 Hz, stopband 60 dB
-static q15_t bq_coeffs_nfm[] = {
-    2271,  0, -3132,  2271, 25663, -11568,
-    9849,  0, -16121, 9849, 26986, -13909,
-   16384,  0, -26655,16384, 28887, -15349
-};
-
-static arm_biquad_casd_df1_inst_q15 bq_nfm = {
-    3, bq_nfm_state, bq_coeffs_nfm, 1
-};
-
-void
-nfm_demod(int16_t *src, int16_t *dst, size_t len)
-{
-    int32_t  *s   = __SIMD32(src);
-    int32_t  *d32 = __SIMD32(dst);
-    unsigned  i;
-    uint32_t  x0  = fm_demod_state.last;
-    q15_t     v;
-
-    disp_fetch_samples(B_CAPTURE, BT_C_INTERLEAVE, src, NULL, len);
-
-    for (i = 0; i < len; i += 2) {
-        uint32_t x1 = *s++;
-        v = atan_2iq(x0, x1);
-        *d32++ = __PKHBT(v, v, 16);
-        x0 = x1;
-    }
-    fm_demod_state.last = x0;
-
-    disp_fetch_samples(B_IF1, BT_R_INTERLEAVE, dst, NULL, len);
-
-    arm_biquad_cascade_df1_q15(&bq_nfm, dst, dst, len / 2);
-
-    disp_fetch_samples(B_PLAYBACK, BT_R_INTERLEAVE, dst, NULL, len);
-}
-
-void
-dsp_init(void)
-{
-}""",
+    new=(
+        "// NFM filter state (zero-initialized by BSS)\n"
+        "static q15_t bq_nfm_state[4 * 3];\n"
+        "\n"
+        "// Elliptic LPF 6th order, fc=5000 Hz @ fs=48000 Hz, stopband 60 dB\n"
+        "static q15_t bq_coeffs_nfm[] = {\n"
+        "    2271,  0, -3132,  2271, 25663, -11568,\n"
+        "    9849,  0, -16121, 9849, 26986, -13909,\n"
+        "   16384,  0, -26655,16384, 28887, -15349\n"
+        "};\n"
+        "\n"
+        "static arm_biquad_casd_df1_inst_q15 bq_nfm = {\n"
+        "    3, bq_nfm_state, bq_coeffs_nfm, 1\n"
+        "};\n"
+        "\n"
+        "void\n"
+        "nfm_demod(int16_t *src, int16_t *dst, size_t len)\n"
+        "{\n"
+        "    int32_t  *s   = __SIMD32(src);\n"
+        "    int32_t  *d32 = __SIMD32(dst);\n"
+        "    unsigned  i;\n"
+        "    uint32_t  x0  = fm_demod_state.last;\n"
+        "    q15_t     v;\n"
+        "\n"
+        "    disp_fetch_samples(B_CAPTURE, BT_C_INTERLEAVE, src, NULL, len);\n"
+        "\n"
+        "    for (i = 0; i < len; i += 2) {\n"
+        "        uint32_t x1 = *s++;\n"
+        "        v = atan_2iq(x0, x1);\n"
+        "        *d32++ = __PKHBT(v, v, 16);\n"
+        "        x0 = x1;\n"
+        "    }\n"
+        "    fm_demod_state.last = x0;\n"
+        "\n"
+        "    disp_fetch_samples(B_IF1, BT_R_INTERLEAVE, dst, NULL, len);\n"
+        "\n"
+        "    arm_biquad_cascade_df1_q15(&bq_nfm, dst, dst, len / 2);\n"
+        "\n"
+        "    disp_fetch_samples(B_PLAYBACK, BT_R_INTERLEAVE, dst, NULL, len);\n"
+        "}\n"
+        "\n"
+        "void\n"
+        "dsp_init(void)\n"
+        "{\n"
+        "}"
+    ),
     description="add nfm_demod() and remove stereo_separate_init()"
 )
 
@@ -128,24 +130,83 @@ dsp_init(void)
 # ─────────────────────────────────────────────
 print("\n[4/4] main.c - mod_table[], channels, shell commands")
 
-# 4a. mod_table
+# 4a. mod_table - spaces variant (as seen in real file)
 patch("main.c",
-    old="} mod_table[] = {\n\t{ cw_demod,        AM_FREQ_OFFSET, 48,  \"cw\"  },\n\t{ lsb_demod,       0,              48,  \"lsb\" },\n\t{ usb_demod,       0,              48,  \"usb\" },\n\t{ am_demod,        AM_FREQ_OFFSET, 48,  \"am\"  },\n\t{ fm_demod,        0,              192, \"fm\"  },\n\t{ fm_demod_stereo, 0,              192, \"fms\" },\n};",
-    new="} mod_table[] = {\n\t{ cw_demod,  AM_FREQ_OFFSET, 48, \"cw\"  },\n\t{ lsb_demod, 0,              48, \"lsb\" },\n\t{ usb_demod, 0,              48, \"usb\" },\n\t{ am_demod,  AM_FREQ_OFFSET, 48, \"am\"  },\n\t{ nfm_demod, 0,              48, \"nfm\" },\n};",
-    description="mod_table[]"
+    old=(
+        '} mod_table[] = {\n'
+        '  { cw_demod, AM_FREQ_OFFSET, 48, "cw" },\n'
+        '  { lsb_demod, 0, 48, "lsb" },\n'
+        '  { usb_demod, 0, 48, "usb" },\n'
+        '  { am_demod, AM_FREQ_OFFSET, 48, "am" },\n'
+        '  { fm_demod, 0, 192, "fm" },\n'
+        '  { fm_demod_stereo, 0, 192, "fms" },\n'
+        '};'
+    ),
+    new=(
+        '} mod_table[] = {\n'
+        '  { cw_demod,  AM_FREQ_OFFSET, 48, "cw"  },\n'
+        '  { lsb_demod, 0,              48, "lsb" },\n'
+        '  { usb_demod, 0,              48, "usb" },\n'
+        '  { am_demod,  AM_FREQ_OFFSET, 48, "am"  },\n'
+        '  { nfm_demod, 0,              48, "nfm" },\n'
+        '};'
+    ),
+    description="mod_table[] spaces variant"
+)
+
+# 4a fallback - tabs variant
+patch("main.c",
+    old=(
+        '} mod_table[] = {\n'
+        '\t{ cw_demod, AM_FREQ_OFFSET, 48, "cw" },\n'
+        '\t{ lsb_demod, 0, 48, "lsb" },\n'
+        '\t{ usb_demod, 0, 48, "usb" },\n'
+        '\t{ am_demod, AM_FREQ_OFFSET, 48, "am" },\n'
+        '\t{ fm_demod, 0, 192, "fm" },\n'
+        '\t{ fm_demod_stereo, 0, 192, "fms" },\n'
+        '};'
+    ),
+    new=(
+        '} mod_table[] = {\n'
+        '\t{ cw_demod,  AM_FREQ_OFFSET, 48, "cw"  },\n'
+        '\t{ lsb_demod, 0,              48, "lsb" },\n'
+        '\t{ usb_demod, 0,              48, "usb" },\n'
+        '\t{ am_demod,  AM_FREQ_OFFSET, 48, "am"  },\n'
+        '\t{ nfm_demod, 0,              48, "nfm" },\n'
+        '};'
+    ),
+    description="mod_table[] tabs variant"
 )
 
 # 4b. Default channels - remove MOD_FM_STEREO
 patch("main.c",
-    old="\t\t{ 26800200, MOD_FM_STEREO },\n\t\t{ 27500200, MOD_FM_STEREO },\n\t\t{ 28400200, MOD_FM_STEREO },",
-    new="\t\t{ 145000000, MOD_NFM },\n\t\t{ 433500000, MOD_NFM },\n\t\t{ 162550000, MOD_NFM },",
+    old=(
+        "\t\t{ 26800200, MOD_FM_STEREO },\n"
+        "\t\t{ 27500200, MOD_FM_STEREO },\n"
+        "\t\t{ 28400200, MOD_FM_STEREO },"
+    ),
+    new=(
+        "\t\t{ 145000000, MOD_NFM },\n"
+        "\t\t{ 433500000, MOD_NFM },\n"
+        "\t\t{ 162550000, MOD_NFM },"
+    ),
     description="default channels"
 )
 
 # 4c. cmd_mode() shell commands
 patch("main.c",
-    old="\t} else if (strncmp(cmd, \"fms\", 3) == 0) {\n\t\tset_modulation(MOD_FM_STEREO);\n\t} else if (strncmp(cmd, \"fm\", 1) == 0) {\n\t\tset_modulation(MOD_FM);\n\t}",
-    new="\t} else if (strncmp(cmd, \"nfm\", 1) == 0) {\n\t\tset_modulation(MOD_NFM);\n\t}",
+    old=(
+        "\t} else if (strncmp(cmd, \"fms\", 3) == 0) {\n"
+        "\t\tset_modulation(MOD_FM_STEREO);\n"
+        "\t} else if (strncmp(cmd, \"fm\", 1) == 0) {\n"
+        "\t\tset_modulation(MOD_FM);\n"
+        "\t}"
+    ),
+    new=(
+        "\t} else if (strncmp(cmd, \"nfm\", 1) == 0) {\n"
+        "\t\tset_modulation(MOD_NFM);\n"
+        "\t}"
+    ),
     description="cmd_mode() shell handler"
 )
 
@@ -158,7 +219,11 @@ patch("main.c",
 
 # 4e. Remove FM stereo stat output
 patch("main.c",
-    old="\tchprintf(chp, \"fm stereo: %d %d\\r\\n\", stereo_separate_state.sdi, stereo_separate_state.sdq);\n\tchprintf(chp, \" corr: %d %d %d\\r\\n\", stereo_separate_state.corr, stereo_separate_state.corr_ave, stereo_separate_state.corr_std);\n\tchprintf(chp, \" int: %d\\r\\n\", stereo_separate_state.integrator);",
+    old=(
+        "\tchprintf(chp, \"fm stereo: %d %d\\r\\n\", stereo_separate_state.sdi, stereo_separate_state.sdq);\n"
+        "\tchprintf(chp, \" corr: %d %d %d\\r\\n\", stereo_separate_state.corr, stereo_separate_state.corr_ave, stereo_separate_state.corr_std);\n"
+        "\tchprintf(chp, \" int: %d\\r\\n\", stereo_separate_state.integrator);"
+    ),
     new="\t/* FM stereo removed */",
     description="remove fm stereo stat output"
 )
